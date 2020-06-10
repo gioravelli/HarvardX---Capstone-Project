@@ -1,0 +1,1129 @@
+---
+title: "World Happiness"
+subtitle: "An empirical study with machine learning applications"
+author: "Giovanni Ravelli, HarvardX - Data Science"
+date: "6/10/2020"
+output: pdf_document
+---
+
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+r = getOption("repos")
+r["CRAN"] = "http://cran.us.r-project.org"
+options(repos = r)
+
+if(!require(knitr)) install.packages("knitr")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(tibble)) install.packages("tibble")
+if(!require(dslabs)) install.packages("dslabs")
+if(!require(ggplot2)) install.packages("ggplot2") 
+if(!require(scales)) install.packages("scales")
+if(!require(plyr)) install.packages("plyr")
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(stringr)) install.packages("stringr") 
+if(!require(forcats)) install.packages("forcats") 
+if(!require(lubridate)) install.packages("lubridate")
+if(!require(caTools)) install.packages("caTools")
+if(!require(ggthemes)) install.packages("ggthemes")
+if(!require(reshape2)) install.packages("reshape2")
+if(!require(data.table)) install.packages("data.table")
+if(!require(corrgram)) install.packages("corrgram")
+if(!require(corrplot)) install.packages("corrplot")
+if(!require(formattable)) install.packages("formattable")
+if(!require(gridExtra)) install.packages("gridExtra)")
+if(!require(ggridges)) install.packages("ggridges")
+if(!require(GGally)) install.packages("GGally")
+if(!require(gridExtra)) install.packages("gridExtra")
+if(!require(moments)) install.packages("moments")
+if(!require(nortest)) install.packages("nortest")
+if(!require(e1071)) install.packages("e1071")
+if(!require(car)) install.packages("car")
+if(!require(broom)) install.packages("broom")
+if(!require(rlang)) install.packages("rlang")
+if(!require(gam)) install.packages("gam")
+if(!require(rpart)) install.packages("rpart")
+if(!require(randomForest)) install.packages("randomForest")
+
+```
+
+
+# Executive Summary
+
+The World Happiness Report is a "landmark survey of the state of global happiness", as stated by Gallup Research who every year performs this global poll involving more than 150 countries representing approximately 98% of the world's population. The first report was published in 2012 and was assembled in Thimphu in July 2011, pursuant to a Bhutanese resolution that invited national governments to “give more importance to happiness and well-being in determining how to achieve and measure social and economic development.” The report continues to gain global recognition as governments, organizations and civil society  increasingly use happiness indicators to inform their policy-making decisions.  
+
+In the World Happiness Report, the happiness ranking is based on answers to the evaluation question asked in the poll. This question, known as the **Cantril ladder**, asks respondents to think of a ladder with the best possible life being a 10 and the worst possible life being a 0, and to rate their own current lives on that scale.  
+
+The authors, subsequently, use six variables to explain happiness variability across countries in the form of a **Happiness Score**. The **six variables** used to predict happiness are: economic production, social support, life expectancy, freedom, absence of corruption, and generosity. 
+
+They benchmark this evaluation against Dystopia (in contrast to Utopia), an imaginary country that has the world’s least-happy people. The purpose in establishing Dystopia is to have a benchmark against which all countries can be favorably compared (no country performs more poorly than Dystopia) in terms of each of the six key variables. 
+
+As stated, the happiness ranking is not based on any index of these six factors, but depends only on the average Cantril ladder scores reported by the respondents. The six variables are used to explain the variation of happiness across countries. According to the authors, taken together, these six variables explain three-quarters of the cross-country variation.      
+
+In this current work we analyze the available data and use different machines learning algorithms to predict the happiness score and understand which factors are most important to pursue happiness in a society. 
+
+\newpage 
+\tableofcontents 
+
+```{r Happiness ranking, echo=FALSE, fig.height = 6}
+
+dataset <- read.csv("./input/2019.csv")
+dataset_2016 <- read.csv("./input/2016.csv")
+
+rank_1 <- dataset %>%
+  mutate(Country = reorder(Country, Score)) %>%
+  slice(1:75) %>%
+  ggplot(aes(Country, Score)) +
+  geom_bar(stat="identity", fill="gray") +
+  coord_flip() +
+  theme(axis.text.y = element_text(size = 5), axis.text.x = element_text(size = 5)) +
+  xlab("") +
+  ylab("") + 
+  geom_jitter(width = 0.1, alpha = 0.2)
+
+  
+rank_2 <- dataset %>%
+  mutate(Country = reorder(Country, Score)) %>%
+  slice(76:156) %>%
+  ggplot(aes(Country, Score)) +
+  geom_bar(stat="identity", fill="gray") +
+  coord_flip() +
+  theme(axis.text.y = element_text(size = 5), axis.text.x = element_text(size = 5)) +
+  xlab("") +
+  ylab("") + 
+  geom_jitter(width = 0.1, alpha = 0.2)
+  
+grid.arrange(rank_1, rank_2, ncol = 2) 
+  
+```
+
+
+
+## Database overview
+
+The World Happiness Report use publicly available data from the **Gallup World Poll**. 
+
+
+We are using the 2019 dataset, a "class data-frame" dataset which is comprised of 156 observations (countries) and 9 variables: the 6 predictors described previously, in addition to Rank, Country and Score. The latter is what we will try to predict using different prediction models. The happiness score and the six variables (*predictors*) are all class "numeric".
+
+\newpage
+```{r, echo=FALSE}
+
+class(dataset)
+str(dataset)
+
+```
+  
+    
+    
+Some elementary statistics are included below: for Score and each variable, min/max values, mean/median and 1st/3rd quantile values. (To note that Somalia's GDP per capita is zero, presumably because not provided).  
+The gap between median and mean GDP per capita is likely an indication of wealth inequality across countries. Similar spread between mean/median is found in other dimensions such as Corruption, Life Expectancy, Freedom. We will look into this with some more analytics soon.   
+  
+  
+```{r, echo=FALSE}
+
+summary(dataset)
+
+```
+
+
+\newpage
+# Data Wrangling
+The dataset is relatively simple and largely clean. 
+
+We run some data wrangling in order to:   
+1. Rename columns so are more readable in charts;   
+2. Add a "Region" column extracted from the Happiness Ranking 2016;   
+3. Shorten the variables' and regions' names to improve data visualization in charts and tables;   
+4. Import the 2016 happiness score for time comparability;   
+5. Check, clean and  fill-in any residual missing value or "NA" and;   
+6. Re-order columns in the data frame.    
+
+After the above procedure is performed, we obtain the following outcome (showing only top 30 countries): 
+
+
+```{r Data Wrangling, echo=FALSE}
+
+dataset_2016 <- dataset_2016[,1:4]  
+dataset_2016 <- dataset_2016[,-3]  
+
+dataset <- left_join(dataset,dataset_2016, by="Country", stringsAsFactors = FALSE)   
+
+colnames(dataset)[which(colnames(dataset) %in% 
+  c("Overall.rank", "GDP.per.capita","Social.support", "Healthy.life.expectancy","Freedom.to.make.life.choices", "Perceptions.of.corruption", "Happiness.Score"))] <- 
+  c("Rank", "Economy", "Family", "Health", "Freedom", "Corruption", "Score_2016")
+
+levels(dataset$Region)[levels(dataset$Region)=="Australia and New Zealand"] <- "ANZ"
+levels(dataset$Region)[levels(dataset$Region)=="Western Europe"] <- "West Europe"
+levels(dataset$Region)[levels(dataset$Region)=="Central and Eastern Europe"] <- "East Europe"
+levels(dataset$Region)[levels(dataset$Region)=="Middle East and Northern Africa"] <- "MENA"
+levels(dataset$Region)[levels(dataset$Region)=="Latin America and Caribbean"] <- "LATAM"
+levels(dataset$Region)[levels(dataset$Region)=="Southeastern Asia"] <- "SE Asia"
+levels(dataset$Region)[levels(dataset$Region)=="Southern Asia"] <- "South Asia"
+levels(dataset$Region)[levels(dataset$Region)=="Eastern Asia"] <- "East Asia"
+levels(dataset$Region)[levels(dataset$Region)=="Sub-Saharan Africa"] <- "Sub-Sahara"
+
+dataset$Region[which(is.na(dataset$Region))] = c("LATAM", "West Europe", "East Europe", "Sub-Sahara","Sub-Sahara","Sub-Sahara","Sub-Sahara","Sub-Sahara") 
+
+
+dataset <- dataset %>% drop_na()
+dataset <- dataset[, c(1,2, 10, 11, 3, 4:9)]
+
+kable(head(dataset,30), format = "latex", booktabs = TRUE) %>%
+    kable_styling(latex_options = "scale_down")
+
+```
+
+\newpage
+# Data Visualization
+These scatter plots allow to visualize two main results: 1) a positive relationship (correlation) between happiness and GDP per capita, such correlation being strongest in the Western world and weakest in South America, with Asia somewhere in between; 2) happiness is highest in Western Europe and lowest in Africa.
+
+```{r, echo=FALSE, fig.height = 3.9}
+
+# Scatterplots
+
+dataset %>% ggplot(aes(Economy, Score, label = "")) +
+  geom_text(nudge_x = 0.5) +
+  xlab("GDP per capita") +
+  ylab("Happiness Score") +
+  ggtitle("") + 
+  geom_point(aes(col=Region), size = 2) +
+  theme(legend.position = "bottom", legend.title=element_blank())
+
+```
+
+```{r, echo=FALSE, fig.height = 4}
+
+# Regional Scatterplots
+
+west <- dataset %>% 
+  filter(Region %in% c("North America", "West Europe", "ANZ", "East Europe"))%>% 
+  ggplot(aes(Economy, Score, label = "")) +
+  geom_text(nudge_x = 0.5) +
+  xlab("") +
+  ylab("") +
+  ggtitle("West") + 
+  geom_point(aes(col=Region), size = 2) +
+  theme(legend.position="none", plot.title = element_text(size = 10))
+
+east <- dataset %>% 
+  filter(Region %in% c("SE Asia", "East Asia", "South Asia"))%>% 
+  ggplot(aes(Economy, Score, label = "")) +
+  geom_text(nudge_x = 0.5) +
+  xlab("") +
+  ylab("") +
+  ggtitle("Asia") + 
+  geom_point(aes(col=Region), size = 2) +
+  theme(legend.position = "none") +
+  theme(legend.position="none", plot.title = element_text(size = 10))
+
+latin <- dataset %>% 
+  filter(Region %in% c("LATAM"))%>% 
+  ggplot(aes(Economy, Score, label = "")) +
+  geom_text(nudge_x = 0.5) +
+  xlab("") +
+  ylab("") +
+  ggtitle("LATAM") + 
+  geom_point(aes(col=Region), size = 2) +
+  theme(legend.position = "none") +
+  theme(legend.position="none", plot.title = element_text(size = 10))
+
+ME_africa <- dataset %>% 
+  filter(Region %in% c("MENA", "Sub-Sahara"))%>% 
+  ggplot(aes(Economy, Score, label = "")) +
+  geom_text(nudge_x = 0.5) +
+  xlab("") +
+  ylab("") +
+  ggtitle("Africa & ME") + 
+  geom_point(aes(col=Region), size = 2) +
+  theme(legend.position = "none") +
+  theme(legend.position="none", plot.title = element_text(size = 10))
+
+gridplot <- grid.arrange(west, east, latin, ME_africa, ncol = 2)
+
+```
+
+
+\newpage
+Furthermore below, the q-plot and box-plot show the distribution of the happiness score within each region. While as expected Western Europe, North America and Australia/New Zealand show distributions that are relatively compact in the upper range of the score, we observe higher dispersion across Middle East and North Africa (MENA), while Sub-Saharan countries are fairly concentrated at the bottom end of the range, save for a couple of outliers. Latin America also features a few outliers in what is otherwise a rather concentrated distribution. A q-plot of the six predictors provide for similar results.   
+
+
+```{r, echo=FALSE, fig.height = 4}
+
+## qplots and Box plot
+
+qplot<- dataset %>% 
+  qplot(Region, Score, data = ., xlab = "") +
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank()) +
+  xlab("")
+
+
+## Box Plots
+
+boxplot <- dataset %>% qplot(Region, Score, data = ., geom = "boxplot") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  xlab("")
+
+grid.arrange(qplot, boxplot, ncol = 1)
+
+
+```
+
+
+```{r, echo=FALSE, fig.height = 3}
+
+
+## qPlots Grid
+
+qplot1 <- dataset %>% 
+  qplot(Region, Economy, data = .) +
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank(), 
+        axis.title.y = element_text(size = 8)) +
+        xlab("")
+
+qplot2 <- dataset %>% 
+  qplot(Region, Family, data = .) +
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank(), 
+        axis.title.y = element_text(size = 8)) +
+        xlab("")
+
+qplot3 <- dataset %>% 
+  qplot(Region, Health, data = .) +
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank(), 
+        axis.title.y = element_text(size = 8)) +
+        xlab("")
+
+qplot4 <- dataset %>% 
+  qplot(Region, Freedom, data = .) +
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank(), 
+        axis.title.y = element_text(size = 8)) +
+        xlab("")
+
+qplot5 <- dataset %>% 
+  qplot(Region, Generosity, data = .) +
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank(), 
+        axis.title.y = element_text(size = 8)) +
+        xlab("")
+
+qplot6 <- dataset %>% 
+  qplot(Region, Corruption, data = .) +
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank(), 
+        axis.title.y = element_text(size = 8)) +
+        xlab("")
+
+gridQplot <- grid.arrange(qplot1, qplot2,qplot3,qplot4,qplot5,qplot6 ,ncol = 3)
+
+```
+
+\newpage
+Similarly below, we visualize some density plots picturing the distribution of the happiness score and of some predictors within each Region. To note that for ANZ and North America we do not have enough observations to form a density. One thing to notice: trust in governments ("Corruption") is low in most regions around the world. 
+
+
+```{r, echo=FALSE, fig.height = 4}
+
+# Ridge Density Plots
+
+dataset %>% 
+  ggplot(aes(Score, Region)) +
+  scale_x_continuous( ) +
+  geom_density_ridges(jittered_points = TRUE) +
+  xlab("Happiness Score") +
+  ylab("")
+
+p1 <- dataset %>%
+  ggplot(aes(Economy, Region)) +
+  scale_x_continuous( ) + 
+  geom_density_ridges(jittered_points = FALSE) +
+  xlab("Economy") +
+  ylab("") + 
+  theme(axis.text.y=element_blank(), axis.text = element_text(size = 7), axis.title.x = element_text(size = 8)) 
+
+
+p2 <- dataset %>%
+  ggplot(aes(Family, Region)) +
+  scale_x_continuous( ) + 
+  geom_density_ridges(jittered_points = FALSE) +
+  xlab("Family") +
+  ylab("") + 
+  theme(axis.text.y=element_blank(), axis.text = element_text(size = 7), axis.title.x = element_text(size = 8))  
+
+p3 <- dataset %>%
+  ggplot(aes(Corruption, Region)) +
+  scale_x_continuous( ) + 
+  geom_density_ridges(jittered_points = FALSE) +
+  xlab("Corruption") +
+  ylab("") + 
+  theme(axis.text.y=element_blank(), axis.text = element_text(size = 7), axis.title.x = element_text(size = 8)) 
+
+p4 <- dataset %>%
+  ggplot(aes(Freedom, Region)) +
+  scale_x_continuous( ) + 
+  geom_density_ridges(jittered_points = FALSE) +
+  xlab("Freedom") +
+  ylab("") + 
+  theme(axis.text.y=element_blank(), axis.text = element_text(size = 7), axis.title.x = element_text(size = 8)) 
+
+grid1 <- grid.arrange(p1,p2,p3,p4, ncol = 2)
+
+
+```
+
+
+\newpage
+## Time comparison of world happiness
+Looking at the data across time, we conclude rapidly that happiness has not changed much in the past 3 years. This is no surprise, given that the key determinants of happiness in a society seem intimately related with structural factors such as the economy, or the inclusiveness, quality and strength of institutions, measured among other things by freedom, trust in government, as well as the fabric of a society such as family and education.  
+   
+   
+```{r, echo=FALSE, fig.height = 6}
+
+# Comparing Happiness Scores across years: 2016 vs 2019
+
+H2016 <- dataset %>% 
+  ggplot(aes(Economy, Score_2016, label = "")) +
+  geom_text(nudge_x = 0.5) +
+  xlab("GDP per capita") +
+  ylab("") +
+  ggtitle("Happiness Score, 2016") + 
+  geom_point(aes(col=Region), size = 2) +
+  theme(legend.position = "", text = element_text(size = 10))
+
+H2019 <- dataset %>% 
+  ggplot(aes(Economy, Score, label = "")) +
+  geom_text(nudge_x = 0.5) +
+  xlab("GDP per capita") +
+  ylab("") +
+  ggtitle("Happiness Score, 2019") + 
+  geom_point(aes(col=Region), size = 2) +
+  theme(legend.position = "", text = element_text(size = 10))
+
+
+scatter <- grid.arrange(H2016, H2019, ncol = 2) 
+
+
+```
+
+
+```{r, echo=FALSE, fig.height = 4}
+
+Hist2016_West <- dataset[(dataset$Region %in% c("ANZ", "East Europe", "North America", "West Europe")),] %>% 
+  ggplot(aes(Score_2016)) +
+  geom_histogram(binwidth = 0.2, color = "grey") + 
+  xlab("") +
+  ylab("Year 2016") 
+
+Hist2016_DEV <- dataset[(dataset$Region %in% c("East Asia", "LATAM", "MENA", "SE Asia", "South Asia", "Sub-Sahara")),] %>% 
+  ggplot(aes(Score_2016)) +
+  geom_histogram(binwidth = 0.2, color = "grey") + 
+  xlab("") +
+  ylab("") 
+
+Hist2019_West <- dataset[(dataset$Region %in% c("ANZ", "East Europe", "North America", "West Europe")),] %>% 
+  ggplot(aes(Score)) +
+  geom_histogram(binwidth = 0.2, color = "grey") + 
+  xlab("West") +
+  ylab("Year 2019") 
+
+Hist2019_DEV <- dataset[(dataset$Region %in% c("East Asia", "LATAM", "MENA", "SE Asia", "South Asia", "Sub-Sahara")),] %>% 
+  ggplot(aes(Score)) +
+  geom_histogram(binwidth = 0.2, color = "grey") + 
+  xlab("Developing World") +
+  ylab("") 
+
+hist <- grid.arrange(Hist2016_West, Hist2016_DEV, Hist2019_West, Hist2019_DEV, ncol = 2) 
+
+```
+
+
+
+```{r, echo=FALSE}
+
+# Boxplots 2016 vs 2019
+
+Bplot2016 <- dataset %>% qplot(Region, Score_2016, data = ., geom = "boxplot") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  xlab("") +
+  ylab("") + 
+  ggtitle("Happiness Score, 2016")
+
+Bplot2019 <- dataset %>% qplot(Region, Score, data = ., geom = "boxplot") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  xlab("") +
+  ylab("") +
+  ggtitle("Happiness Score, 2019")
+
+grid.arrange(Bplot2016, Bplot2019, ncol = 2) 
+
+```
+
+
+\newpage
+# Exploratory Data Analysis 
+So far we have focused on **univariate discrete analysis** to gain more insight from the data, and looked at some of their properties such as frequency/distribution (in the form of histograms and density plots), or simple measures of central tendency (mean and median) and variability/dispersion (outliers, standard deviation). The dataset is made of a finite number of observations, therefore we call this a discrete analysis.  Furthermore, we have considered one variable at a time, we call this univariate analysis. 
+
+We are now adding a bit more sophistication along two directions: 1) we use **bivariate/multivariate analysis** to understand the relationship between more variables at the same time ; 2) we move from discrete to continuous, to relax some assumptions on the distribution of the data and, eventually, set the framework for our machine learning model, and particularly for our regression analysis. The charts below provide a sense of what we try to do. 
+
+```{r, echo=FALSE, fig.height = 6}
+
+plot1 <- qplot(dataset$Score, bins=10, color = I("blue"), xlab = "")
+plot2 <- qplot(dataset$Score, color = I("red"), xlab = "")
+plot3 <- qplot(dataset$Score, geom = "density", color = I("red"), xlab = "2019 Happiness Score")
+
+grid.arrange(plot1,plot2,plot3, ncol = 1)
+
+
+```
+
+
+```{r, echo=FALSE, fig.height = 4}
+
+# Correlation matrix
+
+correlations <- cor(dataset[,5:11],method="pearson")
+corrplot(correlations, number.cex = .9, method = "square", 
+         hclust.method = "ward", order = "FPC",
+         type = "full", tl.cex=0.8,tl.col = "black")
+
+
+```
+
+The correlation matrix pictured above shows two important results, among others: 1) the happiness score is positively correlated with all predictors and, all predictors are correlated with each other, with the exception perhaps of "Generosity" where correlation is more nuanced; 2) Economy, Health and Family are stronger determinants of happiness. Here is another way to visualize this:
+
+```{r, echo=FALSE, fig.height = 4}
+
+ggcorr(dataset[,5:11], palette = "RdYlGn", name = "rho", 
+       label = TRUE, label_color = "black")
+
+```
+
+
+### Association is not causation: a short digression on spurious correlation and confounding
+We noted in the preceding section a strong correlation between the Happiness Score and most variables used as predictors. A critical way to challenge these results is to argue that, "correlation is not causation", i.e. the state of the economy, for example, albeit strongly correlated with happiness, does not necessarily create happiness. These two distributions may simply move together. While this observation defies logic and, most importantly, a wealth of empirical studies, we will use this example to test whether this could be the case. Note that, since we are not sampling (we are using the entire population), we can exclude in the first instance any attempt of data dredging, i.e the practice of cherry picking samples of data to achieve statistically significant results. This is often referred to as p-hacking.  
+
+This latter case being excluded, we need to test if there is a case of **spurious correlation**. This maybe the case with the presence of outliers in the distributions, which we observed previously. We do so by using the **Sperman correlation**, i.e. by computing the correlation on the ranks of the values. The resulting Sperman correlation matrix, shown below, does not highlight any significant change in correlation among variables, therefore suggesting that spurious correlation can be excluded. 
+
+```{r, echo=FALSE}
+
+# Sperman correlation
+
+ranked_data <- mutate(dataset[,5:11], R_Score = rank(Score), R_Econ=rank(Economy),R_Fam=rank(Family), R_Health=rank(Health), 
+                                      R_Free=rank(Freedom), R_Gen=rank(Generosity), R_Corrupt=rank(Corruption))
+ranked_data <- ranked_data[,-(1:7)]
+
+ggcorr(ranked_data, palette = "RdYlGn", name = "rho", 
+      label = TRUE, label_color = "black")
+
+```
+
+
+**Confounding** is another common reason that leads to associations begin misinterpreted: if X and Y are correlated, we call Z a confounder if changes in Z causes changes in both X and Y. In our specific situation, Economy could be a confounder of Heath and Happiness, and therefore explain the strong correlation among the two. "Region", a non-numerical variable that has not been studied in this section, could be a confounder of Economy and Health, and so forth. Unfortunately, we do not have enough data to be able to stratify and look at this phenomena analytically, and therefore we cannot exclude a-priori that some confounding exists.  
+
+
+
+\newpage
+The tables that follow are based on the ggpairs function under the *GGally* library, which is useful for exploring multiple distributions simultaneously.  More insight is provided by displaying pair plots in a matrix format: the pairs are set among the six predictors, with different plots such as scatter or density plots.
+
+```{r, echo=FALSE, fig.height = 4.2}
+
+# Using the GGally package
+
+ggpairs(dataset[,5:11], columns = 1:ncol(dataset[,5:11]), title = "",  
+        axisLabels = "show", columnLabels = colnames(dataset[, 5:11]),
+        upper = list(continuous = wrap(ggally_cor, displayGrid = FALSE), continuous = "density", combo = "box_no_facet"),
+        lower = list(continuous =  wrap(ggally_nostic_resid, displayGrid = FALSE))
+        )
+
+ggpairs(data=dataset,
+        columns=5:11, 
+        upper = list(continuous = wrap(ggally_barDiag, displayGrid = FALSE)),
+        lower = list(continuous = "density")
+        )
+
+```
+
+
+In this GGally plot, each color denotes a Region. One thing worth noting is that the scatter plots between happiness score and most variables have an approximately oval shape, they behave like **bivariate normal distributions**. This is apparent for variables such as Economy, Family, Health and Freedom, while it is less obvious for the last two variables, Generosity and Corruption. Overall, this seems to support the argument that linear regression (and linear models in general) may be an effective method to predict happiness. 
+
+```{r, echo=FALSE, fig.height = 8}
+
+# Using the GGally package
+
+ggpairs(dataset[,5:11], aes(colour = as.factor(dataset$Region), alpha = 0.4), 
+        upper = list(continuous = wrap("smooth", alpha = 0.3, size=0.1)),
+        lower = list(continuous = "points", combo = "dot_no_facet")
+        )
+
+```
+
+\newpage
+Not surprisingly, the PCA analysis shows that two principal components alone explain more than half of the total variability. Three components explain the vast majority of it. Given the limited size of the database, in this current work we will not perform any dimension reduction analysis, but the PCA results confirm high causation particularly between 2-3 variables. 
+
+```{r, echo=FALSE}
+
+# Principal Component Analysis
+
+pca <- prcomp(dataset[,5:11], center=TRUE, scale.=TRUE)
+plot(pca, type="l", main='')
+grid(nx = 10, ny = 14)
+title(main = "Principal components weights", sub = NULL, xlab = "Components", cex.lab=1, cex.main = 1)
+box() 
+
+pca
+
+```
+
+
+\newpage
+# Linear Models
+Data visualization allowed us to understand some of the features of the variables and of their distributions. One quality we noted is that most if not all variables and the happiness score seem to behave like bivariate normal distributions, hence supporting the argument that linear models may fit well to predict happiness. We also noticed strong correlations. 
+
+With  the qq-plots below, we formalize this argument by comparing theoretical quantiles with sample quantiles (in this case, the entire population, given the small number of observations). The qq-plots do not provide a strong indication of non-normality: the plots are fairly straight across the different levels of standardized scores and overall. We observe there are some deviations along the tails. Next page, the histogram itself resembles fairly accurately a bell-shaped distribution, with perhaps a slight negative skewness (more data on the upper half) which is consistent with the tails of the qq-plots. The histograms of the variables, however, feature high skewness, both negative (Family, Life Exp.) and positive (Corruption, Generosity).  
+
+
+```{r, echo=FALSE, fig.height = 3.3}
+
+qqnorm(dataset$Score, cex.lab=0.8, cex.main = 0.9); qqline(dataset$Score) 
+
+dataset %>% 
+  mutate(z_score = round((dataset$Score - mean(dataset$Score))/sd(dataset$Score))) %>%
+  filter(z_score %in% -3:3) %>%
+  ggplot() +
+  stat_qq(aes(sample=dataset$Score)) +
+  facet_wrap(~z_score) + 
+  theme(axis.title.x=element_blank()) +
+  xlab("") + 
+  ylab("")
+
+```
+
+
+```{r, echo=FALSE, fig.height = 4}
+
+hist(dataset$Score, col="gray", xlab = "", main = "Happiness Score") 
+
+par(mfrow=c(2,3))
+hist(dataset$Economy, col="gray", xlab = "", main = "GDP per capita") 
+hist(dataset$Family, col="gray", xlab = "", main = "Social Support") 
+hist(dataset$Health, col="gray", xlab = "", main = "Life Expectation") 
+hist(dataset$Freedom, col="gray", xlab = "", main = "Freedom") 
+hist(dataset$Generosity, col="gray", xlab = "", main = "Generosity") 
+hist(dataset$Corruption, col="gray", xlab = "", main = "Trust in Government") 
+
+```
+
+\newpage
+The Shapiro-Wilk normality test shows a **p-value of 0.188** for the Score distribution, and it is above 0.05 for most variables. For Economy and Generosity, we do not exceed the significant p-value level of 0.05,  which would indicate rejection of the null hypothesis, i.e. rejection of the normality hypothesis. However, the sample population is very small and it is worth noting that such fit tests are more likely to "fail to reject" (type I error) when the sample size is small. 
+
+Additional tests performed are **skewness** and **kurtosis**. A normal distribution has skewness equal to 0: this test is met for the Score distribution, it is not met for the other variables. A normal distribution has kurtosis equal to 3: this test is NOT met. With negative excess kurtosis, we have platykurtic distributions with thinner tails and its central peak lower and broader, as observed in the histograms.  
+
+All considered, the deviations from normality seem acceptable and do not seem to materially impact our analysis and its results.
+
+```{r, echo=FALSE}
+
+#  Shapiro-Wilk test, skewness and kurtosis
+
+sh_0 <- shapiro.test(dataset$Score)[2]
+sk_0 <- skewness(dataset$Score)
+kr_0 <- kurtosis(dataset$Score)
+
+sh_1 <- shapiro.test(dataset$Economy)[2]
+sk_1 <- skewness(dataset$Economy)
+kr_1 <- kurtosis(dataset$Economy)
+
+sh_2 <- shapiro.test(dataset$Family)[2]
+sk_2 <- skewness(dataset$Family)
+kr_2 <- kurtosis(dataset$Family)
+
+sh_3 <- shapiro.test(dataset$Health)[2]
+sk_3 <- skewness(dataset$Health)
+kr_3 <- kurtosis(dataset$Health)
+
+sh_4 <- shapiro.test(dataset$Freedom)[2]
+sk_4 <- skewness(dataset$Freedom)
+kr_4 <- kurtosis(dataset$Freedom)
+
+sh_5 <- shapiro.test(dataset$Generosity)[2]
+sk_5 <- skewness(dataset$Generosity)
+kr_5 <- kurtosis(dataset$Generosity)
+
+sh_6 <- shapiro.test(dataset$Corruption)[2]
+sk_6 <- skewness(dataset$Corruption)
+kr_6 <- kurtosis(dataset$Corruption)
+
+
+norm_test <- matrix(c(sh_0,sh_1, sh_2, sh_3, sh_4, sh_5, sh_6,
+                      sk_0,sk_1, sk_2, sk_3, sk_4, sk_5, sk_6,
+                      kr_0,kr_1, kr_2, kr_3, kr_4, kr_5, kr_6), 
+                  nrow = 7, ncol = 3)
+colnames(norm_test) <- c("p-value", "skweness", "kurtosis")
+rownames(norm_test) <- c("Score", "Economy", "Family", "Health", "Freedom", "Generosity", "Corruption")
+
+kable(norm_test, format = "latex", booktabs = TRUE, caption = "Normality Tests") %>% 
+  kable_styling(latex_options = "scale_down")
+
+```
+
+\newpage
+## Linear Regression
+
+With the previous results giving some comfort on the normality of the distributions, we proceed with linear regression.  The approach is to find the values that minimize the distance of the fitted model to the data, i.e. we find those estimates that minimize the residual sum of squares (RSS):  $$RSS = \sum_{i=1}^{n}\Bigl(y_{i} - (\beta_{0}+\beta_{1}x_{i})\Bigl)^2$$   
+
+
+The tables below show the regression results using, for a start, one variable at once: Economy, Health and Corruption. Regression is fairly robust in the first two cases; less so in the third case where fitting Score against Corruption seems to achieve weaker results if we consider R-squared, p-value and residual standard error. We visualize this in the gg-plots with 95% confidence interval.
+
+
+```{r, echo=FALSE}
+
+fit_Economy <- lm(Score ~ Economy, data = dataset) 
+summary(fit_Economy)
+
+fit_Health <- lm(Score ~ Health, data = dataset) 
+summary(fit_Health)
+
+```
+
+\newpage
+```{r, echo=FALSE}
+
+fit_Corruption <- lm(Score ~ Corruption, data = dataset) 
+summary(fit_Corruption)
+
+ggplot1 <- dataset %>% ggplot(aes(Economy, Score)) + geom_point() + geom_smooth(method = "lm") 
+ggplot2 <-  dataset %>% ggplot(aes(Health, Score)) + geom_point() + geom_smooth(method = "lm")
+ggplot3 <-  dataset %>% ggplot(aes(Corruption, Score)) + geom_point() + geom_smooth(method = "lm")
+
+grid.arrange(ggplot1, ggplot2, ggplot3, ncol=3)
+
+```
+
+\newpage
+We now run the same regression, this time using all 6 predictors: a **multiple linear regression**. Results are more robust: R-squared is 77% and RSS is 0.54.  
+
+The two charts below represent: 1) a quantile-quantile (Q-Q) plot of the fitted values of our regression model against the actual happiness scores; 2) a Q-Q Norm plot of the residuals of our regression model. The estimated and actual distributions seem to have similar shape and location. 
+
+```{r, echo=TRUE}
+
+fit <- lm(Score ~ ., data = dataset[,5:11]) 
+predictions <- predict(fit, se.fit = TRUE)
+summary(fit)
+
+```
+
+ 
+```{r, echo=FALSE, fig.height = 3.2}
+
+par(mfrow=c(1,2))
+qqplot(dataset$Score, fit$fitted.values, points.col=10, main = "Q-Q Plot: Estimates vs Scores", 
+       cex.lab=0.8, cex.main = 0.8, 
+       ylab = "Fitted Values", xlab = "True Values") 
+qqnorm(fit$residuals, cex.lab=0.8, cex.main = 0.8); qqline(fit$residuals)  
+par(mfrow=c(1,1))
+
+```
+
+To complete our linear regression analysis, we use the *broom* package to present some further results using the functions *tidy, glance and augment*. 
+
+```{r, echo=FALSE, fig.height = 3}
+
+tidy(fit, conf.int = TRUE)
+glance(fit)
+augment(fit)
+
+td <- tidy(fit, conf.int = TRUE)
+ggplot(td, aes(estimate, term, color = term)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  geom_line() + 
+  theme(legend.position = "")
+
+```
+
+
+\newpage
+# Machine Learning Models
+In the following sections we apply machine learning to build, train and test a prediction model for the world happiness. We will consider different models: **linear and non-linear** models, as well as **supervised and unsupervised** models. We will discuss the merits of each model in the dedicated sections.
+
+In machine learning, data comes in the form of: 1) the outcome we want to predict and, 2) the features that we use to predict the outcome. We want to build an algorithm that takes feature values as input and returns a prediction for the outcome when we don’t know the outcome. The machine learning approach is to train an algorithm using a dataset for which we do know the outcome, and then apply this algorithm in the future to make a prediction when we don’t know the outcome.
+
+Before we proceed, we need to create our train and test sets. We will use the **train-set** to train the model (machine learning!) and fine-tuning parameters via **cross validation**. Once the models have been trained (or "fitted"), we will use them to make predictions and we will measure their performance against the true values of the **test-set**. This procedure will prevent any form of over-training or over-fitting.    
+
+We will use the *caret* package (short for "Classification And Regression Training") to efficiently train and fit our models. Caret package is a comprehensive framework for building machine learning models in R. We will measure prediction accuracy of each model in the form of **Residual Mean Squared Error (“RMSE”)**:  $$\mbox{RMSE} = \sqrt{\frac{1}{n}\sum_{i=1}^{n} (\hat{y_i} - y_i)^2}$$ 
+
+First thing in order, we partition our dataset using the caret package: the function *createDataPartition* generates indexes by randomly splitting the data into train and test sets. The train set is used to develop the algorithm and fit the parameters (we call this *supervised machine learning*); the test set is used to provide an unbiased evaluation of a fully-trained model. 
+
+To split the dataset between train and test sets, there are two competing concerns we need to handle: with less training data, parameter estimates have greater variance; with less testing data, performance statistics have greater variance. Given our database has a very small number of observations (148 Countries), cross-validation becomes more important and therefore we should devote a larger proportion of data to train and fit the models. We use 80% of observations for training purposes and the remaining 20% for testing. Additionally, we create the RMSE function to evaluate the different models.  
+
+```{r , echo=TRUE}
+
+# Function that computes the residual means squared error 
+  
+RMSE <- function(true_ratings, predicted_ratings){
+    sqrt(mean((true_ratings - predicted_ratings)^2))
+}
+  
+
+# Data partitioning into train-set and test-set
+
+set.seed(1979, sample.kind="Rounding")
+
+index <- createDataPartition(y = dataset$Score, times = 1, p = 0.2, list = FALSE)
+train_set <- dataset[-index, 5:11]
+test_set <- dataset[index, 5:11]
+
+```
+
+
+```{r , echo=FALSE}
+
+table <- matrix(c(ncol(train_set),nrow(train_set), ncol(test_set), nrow(test_set)), 
+                    nrow = 2, ncol = 2)
+
+colnames(table) <- c("Train Set", "Test Set")
+rownames(table) <- c("N. Features", "N. Observations")
+table 
+
+```
+
+
+### Conditional probabilities and expectations. Smoothing techniques. 
+In machine learning applications, we rarely can predict outcomes perfectly. The most common reason for not being able to build perfect algorithms is that it is impossible. To see this, note that most datasets will include the same exact observed values for all predictors, but with different outcomes. In a machine learning model however, equal inputs (the predictors) implies equal outputs (the predictions). To overcome this issue, we make use of probabilistic representations of the problem.  Outcomes with the same observed values for the predictors may not all be the same, but we can assume that they all have the same probability of this class or that class. This is **conditional probability**.   
+
+These probabilities guide the construction of an algorithm that makes the best prediction: for any given *x*, we will predict the class *k* with the largest probability. We refer to this as Bayes’ Rule or conditional expectation. Note that the expected value has an attractive mathematical property: it minimizes the MSE. And this is the reason we are using RMSE as a measure of accuracy of our prediction models. We have now established the connection between conditional probabilities and machine learning. 
+
+**Discriminative models** calculate the conditional probability $p(Y|X=x)$ directly and do not consider the distribution of the predictors. They discriminate one class (or object) from another: a digit, an animal, the sex of a person. For this reason they are most often used for classification purposes. However, knowing the distribution of the predictors may be useful. Methods that model the joint probability/distribution $p(X,Y)$ are referred to as **generative models**: they model how the entire data, X and Y, are generated. The theoretical foundation is provided by Bayes’theorem. Naive Bayes or Quadratic Discriminant Analysis (QDA) are two examples of generative models. Discriminative training algorithms tend to be more complex albeit they look simpler. The intuition behind this is that they are trying to learn something more subtle. They make however fewer assumptions about the underlying data distribution and rely more on data quality. With many classes of predictors, and when it is not clear which class is more discriminative, generative models may be adopted. This is not the case here, therefore we will use discriminative methods, which are also computationally less onerous. 
+
+We now clarify how these concepts are tackled from a numerical perspective, i.e. we introduce the concept of **smoothing** (or "curve fitting"), a powerful technique used across data analysis. The concepts behind smoothing techniques are extremely useful in machine learning because conditional expectations / probabilities can be thought of as trends of unknown shapes that we need to estimate in the presence of uncertainty. The general idea of smoothing is to group data points into strata in which the value of *f(x)* can be assumed to be constant. We can make this assumption because we think *f(x)* changes slowly and, as a result, *f(x)* is almost constant in small windows of time. The idea behind **bin smoothing** is to make this calculation with each value of *x* as the center. By computing this mean for every point, we form an estimate of the underlying curve *f(x)*. The final result from the bin smoother is normally quite wiggly. One reason for this is that each time the window moves, two points change. We can attenuate this somewhat by taking weighted averages that give the center point more weight than far away points, with the two points at the edges receiving very little weight. This technique is called **kernel**; the ksmooth function provides a “smoother” option which uses the normal density to assign weights. A further improvement can be achieved by using **local weighted regression (loess)**: using Taylor’s Theorem, instead of assuming the function is approximately constant in a window, we assume the function is locally linear. Clearly, how we set the smoothing parameters is critical in machine learning.  
+
+There are many more sophisticated techniques that the literature provides. With the key concepts clarified, we are now ready to build a machine learning model. 
+
+\newpage
+## Model 1: Generalized Linear Model (GLM)
+We start with a generalized linear model, which is a flexible generalization of ordinary linear regression. It is worth recalling that, if the pair (X, Y) follow a bivariate normal distribution, then the conditional expectation (what we want to estimate) is equivalent to the regression line.    
+
+GLM is a more flexible linear predictive model in that it allows for  variables that have distribution models other than a normal distribution. Ordinary linear regression predicts the expected value of an unknown quantity as a linear combination of a set of observed values (predictors): a constant change in a predictor leads to a constant change in the variable we want to predict. This is appropriate when the latter has a normal distribution, but not for many other arbitrary distributions that we observe in nature (exponential, log-linear, binomial, Bernoulli etc.). Generalized linear models cover all these situations by allowing the unknown variable to have arbitrary distributions (rather than simply normal distributions). It is a way of unifying various other statistical models, including linear regression, logistic regression and Poisson regression. As we will note further on, we may wish to drop linearity to achieve higher accuracy in our predictions.  
+
+Below we show the code for fitting the model and to make predictions. Note that there is no tuning parameter for this model. The fitting parameters, predictions and results are below. The **RMSE** for the GLM model is **0.589**. This compares with a RSS of the linear regression model 0.541. However, note that the linear regression was performed on the entire population, i.e. we used our knowledge of the true results of the Happiness Score and computed the best fitting line: it's a standard regression where we estimated the parameters. In this machine learning exercise, we made predictions of the Happiness Score pretending we do not know the true outcome when we train the model.    
+
+```{r, echo=TRUE}
+
+glm_fit <- train(Score ~ ., method = "glm", data = train_set)
+glm_predictions <- predict(glm_fit, test_set, type = "raw")
+
+glm_fit
+summary(glm_predictions)
+
+glm_rmse <- RMSE(test_set$Score, glm_predictions) 
+glm_rmse
+
+```
+
+
+## Model 2: k-nearest Neighbors (kNN)
+With k-nearest neighbors (kNN) we estimate the conditional probability of two points $p(x_1, x_2)$ in a similar way to standard bin smoothing. However, kNN is easier to adapt to multiple dimensions and therefore is suited to our case. First we define the distance between all observations based on the features. Then, for any point $(x_1, x_2)$ for which we want an estimate of $p(x_1, x_2)$, we look for the k nearest points to $(x_1, x_2)$ and then take an average of the 0s and 1s associated with these points. We refer to the set of points used to compute the average as the *neighborhood*.  
+
+
+**K-fold cross validation**. We can control the flexibility of our estimate, in this case through the k parameter: larger $k_s$ result in smoother estimates, while smaller $k_s$ result in more flexible and more wiggly estimates. The *caret* package provides a function that performs cross validation for us. By default, cross validation is performed by taking 25 bootstrap samples comprised of 25% of the observations. For the kNN method, the default is to try k = 5, 7, 9.     
+
+The predict function for knn produces a probability for each class. This algorithm generates an **RMSE** of **0.507**, a significant improvement from the GLM performance.
+
+```{r, echo=TRUE}
+
+knn_fit <- train(Score ~ ., method = "knn", data = train_set)
+knn_predictions <- predict(knn_fit, test_set, type = "raw")
+
+knn_fit
+summary(knn_predictions)
+
+knn_rmse <- RMSE(test_set$Score,knn_predictions) 
+knn_rmse
+
+```
+
+\newpage
+## Model 3: Local Weighted Regression (loess)
+As noted previously, standard bin smoothing or kNN smoothing assume that a function is (approximately) constant within the window, so we need (very) small windows for this assumption to be true. kNN for instance is a type of *lazy learning*, where the function is only approximated locally, and all computation is deferred until function evaluation. The consequence of this is that we end up with a small number of data points to average and this could results in a imprecise estimate (the boundary of the curve we want to fit ends up somewhat wiggly).  
+
+A local weighted regression (loess) permits us to consider larger window sizes (we call these *span*): instead of assuming that the function is approximately constant in a window, we assume the function is locally linear. This is a more flexible method to fit a curve.  
+
+We perform cross-validation of the parameter *span* by using the *tuneGrid* parameter. The best fitting parameter and results are below. **RMSE** under the loess model is **0.559**, higher than in the case of knn.  
+
+```{r, echo=TRUE, fig.height = 2.5}
+
+grid <- expand.grid(span = seq(0, 10, len = 20), degree = 1)
+train_loess <- train(Score ~ ., method = "gamLoess", 
+                     tuneGrid=grid, 
+                     data = train_set )
+
+ggplot(train_loess, highlight = TRUE)
+
+train_loess$bestTune
+
+loess_fit <- train(Score ~ ., method = "gamLoess", 
+                   span = train_loess$bestTune, 
+                   degree = 1, 
+                   data = train_set)
+loess_fit
+
+loess_predictions <- predict(loess_fit, test_set)
+summary(loess_predictions)
+
+loess_rmse <- RMSE(test_set$Score,loess_predictions) 
+loess_rmse
+
+```
+
+
+## Model 4: Regression Tree
+
+A tree is basically a flow chart of yes or no questions. The general idea is to define an algorithm that uses data to create these trees with predictions at the ends, referred to as *nodes*. Decision trees operate by predicting an outcome Y by partitioning the predictors. When the outcome is continuous, we call the method a regression tree. 
+
+Regression trees create partitions recursively. We start the algorithm with one partition, the entire predictor space. After the first step we will have two partitions. After the second step we will split one of these partitions into two and will have three partitions, then four, five, and so on. 
+
+The chart below describes how the nodes are built in our case: we start with predictor Economy, and we decide to split it at a value of 1.11. One of these regions uses Health (a second predictor) and is further split at a value 0.6505 in two partitions. The other branch uses a third predictor, Family, and recursively we split this region in two more branches and so on.
+
+```{r, echo=FALSE, fig.height = 5}
+
+tree_fit <- rpart(Score ~ ., data = train_set)
+plot(tree_fit, margin = 0.1)
+text(tree_fit, cex = 0.75)
+
+```
+
+The algorithm stopped partitioning at 7, with 8 nodes. Note the *complexity parameter*. Every time we split and define two new partitions, our train-set RSS decreases. This is because with more partitions, our model has more flexibility to adapt to the training data. In fact, if you split until every point is its own partition, then RSS goes all the way down to 0, since the average of one value is that same value. To avoid this, the algorithm sets a minimum for how much the RSS must improve for another partition to be added. This is the meaning of *cp*: the RSS must improve by a factor of *cp* for the new partition to be added.  
+
+By default, *cp* is set at 0.01. Large values of *cp* will therefore force the algorithm to stop earlier which result in less nodes. The other parameter we control is  the minimum number of observations required in a partition. By default, 20 observations: *minsplit*=20. If we set *cp* = 0 and *minsplit* = 2, then our prediction is as flexible as possible and our predictor is our original data. The computational effort is however large. In addition, we will likely incur in over-training. The larger these values are the more data is averaged to compute a predictor and thus reduce variability. The drawback is that it restricts flexibility. As usual, the way to optimize these parameters is by using cross-validation. 
+
+```{r, echo=FALSE, fig.height = 5.5}
+
+tree_fit$cptable
+
+tree1 <- train_set %>%
+  mutate(y_hat = predict(tree_fit)) %>%
+  ggplot() +
+  geom_point(aes(Economy, Score)) +
+  geom_step(aes(Economy, y_hat), col="red") +
+  theme(text = element_text(size = 10))
+
+tree2 <- train_set %>%
+  mutate(y_hat = predict(tree_fit)) %>%
+  ggplot() +
+  geom_point(aes(Family, Score)) +
+  geom_step(aes(Family, y_hat), col="red") +
+  theme(text = element_text(size = 10))
+
+tree3 <- train_set %>%
+  mutate(y_hat = predict(tree_fit)) %>%
+  ggplot() +
+  geom_point(aes(Health, Score)) +
+  geom_step(aes(Health, y_hat), col="red") +
+  theme(text = element_text(size = 10))
+
+tree4 <- train_set %>%
+  mutate(y_hat = predict(tree_fit)) %>%
+  ggplot() +
+  geom_point(aes(Freedom, Score)) +
+  geom_step(aes(Freedom, y_hat), col="red") +
+  theme(text = element_text(size = 10))
+
+grid.arrange(tree1, tree2, tree3, tree4, ncol=1)
+
+```
+
+
+The code further below shows the model fitting and the results of the regression tree algorithm . **RMSE** is equal to **0.73**. This model is somewhat less accurate than the previous models. We will try to improve accuracy moving from a "tree" to a "forest". The random forest  algorithm is discussed next. 
+
+```{r, echo=TRUE}
+
+tree_fit <- rpart(Score ~ ., data = train_set)
+tree_predictions <- predict(tree_fit, test_set)
+summary(tree_predictions)
+
+tree_rmse <- RMSE(test_set$Score,tree_predictions) 
+tree_rmse
+
+```
+
+\newpage
+## Model 5: Random Forest
+
+Random forests are a very popular machine learning approach that addresses some of the shortcomings of decision trees. The idea is to improve prediction performance and reduce instability by averaging multiple decision trees (a forest of trees constructed with randomness).  
+
+The first step is *bootstrap aggregation*: the idea is to generate many predictors, each using regression or classification trees, and then forming a final prediction based on the average prediction of all these trees. To assure that the individual trees are not the same, we use the bootstrap to induce randomness. These two features explain the name: the bootstrap makes the individual trees randomly different, and the combination of trees is the forest. 
+
+We obtain different decision trees from a single training set by applying two strategies: 1) we create a bootstrap training set by sampling N observations from the training set with replacement. This is the first way to induce randomness. 2) The second way random forests induce randomness is by randomly selecting features to be included in the building of each tree. A different random subset is selected for each tree. This reduces correlation between trees in the forest, thereby improving prediction accuracy. Note that often, many features can be informative but including them all in the model may result in overfitting.  
+
+In the chart below we see how the error rate of the algorithm drops as we add more trees. Effectively, accuracy improves significantly until we add about 50 trees, after which it stabilizes. From the chart further next we appreciate how a random forest  is smoother than a regression tree. It is so because the average of many step functions can be smooth.
+
+```{r, echo=FALSE}
+
+rf_fit <- randomForest(Score ~ ., data = train_set)
+rf_fit
+
+```
+
+
+```{r, echo=FALSE, fig.height = 3.5}
+
+plot(rf_fit, cex.lab=1, cex.main = 1, main = "Random Forest Fit")
+
+train_set %>%
+  mutate(y_hat = predict(rf_fit, newdata = train_set)) %>%
+  ggplot() +
+  geom_point(aes(Economy, Score)) +
+  geom_line(aes(Economy, y_hat), col="red") +
+  theme(text = element_text(size = 10))
+
+```
+
+Below are the results of our model, which as expected marks a significant improvement when compared to the regression tree. The random forest **RMSE** is **0.578**. 
+
+Note however that this higher performance comes at the cost of losing interpretability. One way to alleviate this problem is to examine variable importance: we count how often a predictor is used in the individual trees. The caret package includes the function *varImp* that extracts variable importance from any model in which the calculation is implemented. As per below. 
+
+```{r, echo=TRUE}
+
+rf_predictions <- predict(rf_fit, test_set)
+summary(rf_predictions)
+
+rf_rmse <- RMSE(test_set$Score,rf_predictions) 
+rf_rmse
+
+varImp(rf_fit)
+
+```
+
+
+## Model 6: Clustering - Heatmap
+
+The algorithms used up to now are examples of a general approach referred to as supervised machine learning: we use the outcomes in a training set to supervise the creation of our prediction algorithm. There is another subset of machine learning referred to as unsupervised: in this case, we do not necessarily know the outcomes and instead are interested in discovering groups. These algorithms are also referred to as **clustering algorithm** since predictors are used to define clusters. There are applications in which unsupervised learning can be a powerful technique, in particular
+as an exploratory tool.  
+
+A first step in any clustering algorithm is defining a *distance* between observations or groups of observations. Then we need to decide how to join observations into clusters. There are many algorithms for doing this, we choose to use **Heatmap**. Other popular algorithms in this family are hierarchical clustering and k-means. 
+
+Heatmaps are a powerful visualization tool to discover clusters or patterns in your data. The idea is to plot an image of your data matrix with colors used as the visual cue and both the columns and rows ordered according to the results of clustering algorithm.  
+
+This is the result. The distance measures how different two data points are. It is calculated using the *dist()* function, whose own default is euclidean distance, and is already embedded into *heatmap()*. Note that it only measures the absolute distance between the points in space, and quite importantly, pays no attention to the “shape” of the curve. This makes it difficult to interpret. 
+
+```{r, echo=FALSE, fig.height = 5}
+
+x <- sweep(dataset[,5:11], 2, colMeans(dataset[,5:11]))
+x<- as.matrix(x)
+
+heatmap(x, col = RColorBrewer::brewer.pal(10, "Spectral"),  cexCol=1) 
+
+```
+
+However, if we consider the Pearson's correlation as a measure of similarity (with cor=1 meaning the shape of two distributions is identical, cor=-1 the exact opposite), then for clustering we can subtract the correlation matrix from 1 to get a measure of distance. We can do that for 10 observations, for example, and run a naive cluster analysis, as shown below. It now makes more sense: the distance between one object and itself is zero. The two observations with the least distance (pair 3,6) will be clustered together, then recursively the next (pair 1,2), the next again (9,10) and so on. The heatmap is visualizing this process, only it uses color. This method is good as a visualization technique only, it will not generate an RMSE. 
+
+```{r, echo=FALSE, fig.height = 4}
+
+small_x <- x[1:10,]
+1-cor(t(small_x))
+hc <- hclust(as.dist(1-cor(t(small_x))))
+plot(hc)
+
+```
+
+
+\newpage
+# Results 
+The table on top of this page and the gg-plots below provide a summary of the algorithms performance, measured in the form of RMSE. The best performing model is kNN, with an RMSE of 0.507, followed by loess. GLM and random forest are not far behind, while regression tree is significantly less accurate in predicting the happiness score. 
+
+
+```{r, echo=FALSE}
+
+RMSE_results <- matrix(c(glm_rmse, knn_rmse, loess_rmse, tree_rmse, rf_rmse, "N/A",
+                         "linear (parametric)", "locally constant (non-parametric)", "locally linear  (non-parametric)", 
+                         "non-linear", "non-linear", "non-linear",
+                         "yes", "yes", "yes", "yes", "yes", "yes",
+                         "no", "yes", "yes", "yes", "yes", "no",
+                         "yes", "yes", "yes", "yes", "yes", "clustering"), 
+                    nrow = 6, ncol = 5)
+
+colnames(RMSE_results) <- c("RMSE", "Linearity", "Discriminative", "Cross-Validated", "Supervised")
+rownames(RMSE_results) <- c("Generalized Linear Model", "K-nearest Neighbors", "Local Weighted Regression", 
+                         "Regression Tree", "Random Forest", "Heatmap")
+
+kable(RMSE_results, format = "latex", booktabs = TRUE, 
+            caption = "Machine Learning Models - Predictive Accuracy (RMSE)") %>% 
+  kable_styling(latex_options = "scale_down")
+
+```
+
+```{r, echo=FALSE, fig.height = 6}
+
+glm_data <- as.data.frame(cbind(Predictions = glm_predictions, Actual = test_set$Score))
+knn_data <- as.data.frame(cbind(Predictions = knn_predictions, Actual = test_set$Score))
+loess_data <- as.data.frame(cbind(Predictions = loess_predictions, Actual = test_set$Score))
+tree_data <- as.data.frame(cbind(Predictions = tree_predictions, Actual = test_set$Score))
+rf_data <- as.data.frame(cbind(Predictions = rf_predictions, Actual = test_set$Score))
+
+gg_glm <- ggplot(glm_data, aes(Actual, Predictions)) +
+  geom_point() + theme_bw() + geom_abline() +
+  labs(title = "Generalized Linear Model", x = "True Score",
+       y = "Predicted Score") +
+  theme(plot.title = element_text(face = "bold", size = (10)), 
+        axis.title = element_text(size = (10)))
+
+gg_knn <- ggplot(knn_data, aes(Actual, Predictions)) +
+  geom_point() + theme_bw() + geom_abline() +
+  labs(title = "k-nearest Neighbors", x = "True Score",
+       y = "Predicted Score") +
+  theme(plot.title = element_text(face = "bold", size = (10)), 
+        axis.title = element_text(size = (10)))
+
+gg_loess <- ggplot(loess_data, aes(Actual, Predictions)) +
+  geom_point() + theme_bw() + geom_abline() +
+  labs(title = "Local Weighted Regression", x = "True Score",
+       y = "Predicted Score") +
+  theme(plot.title = element_text(face = "bold", size = (10)), 
+        axis.title = element_text(size = (10)))
+
+gg_tree <- ggplot(tree_data, aes(Actual, Predictions)) +
+  geom_point() + theme_bw() + geom_abline() +
+  labs(title = "Regression Tree", x = "True Score",
+       y = "Predicted Score") +
+  theme(plot.title = element_text(face = "bold", size = (10)), 
+        axis.title = element_text(size = (10)))
+
+gg_rf <- ggplot(rf_data, aes(Actual, Predictions)) +
+  geom_point() + theme_bw() + geom_abline() +
+  labs(title = "Rain Forest", x = "True Score",
+       y = "Predicted Score") +
+  theme(plot.title = element_text(face = "bold", size = (10)), 
+        axis.title = element_text(size = (10)))
+
+grid.arrange(gg_glm, gg_knn, gg_loess, gg_tree, gg_rf, ncol = 2, nrow = 3)
+
+```
+
+\newpage
+# Conclusions 
+
+In this work, we have tried to analyze the data underlying the popular Gallup's poll on world happiness.   
+
+After some data exploration and some elementary statistical analysis, we have attempted to forecast the happiness score using machine learning as a predictive tool. We have applied different algorithms and for each model, measured the predictive accuracy in the form of *residual mean square errors*. We have used linear and non-linear models as well as supervised and un-supervised models. We have not used logistic regression as this applies to categorical data traditionally limited to only two-class classification problems (for example binary data such as 0 and 1, TRUE and FALSE, Male and Female). It is worth however noting that logistic regression is a specific case of a set of generalized linear models (GLM) that we have used. Similarly, we have not used generative classification algorithms such as Linear (LDA) or Quadratic Discriminant Analysis (QDA).   
+
+After deploying GLM regression, we have gradually relaxed our assumptions around the distribution of the observed variables, and have introduced more flexible models such as kNN and loess algorithms. These two models have performed best. Finally, we experimented with regression tree and random forest, and concluded with some clustering analysis in the form of a heatmap visualization. 
+
+## Future Developments
+As summarized in the previous section, we have reached satisfactory predictive results with some of our algorithms. All models scored an RMSE in the 0.5-0.6 region, with the exception of the regression tree (RMSE > 0.70). To improve our machine learning performance, we foresee future developments along two main directions: new predictors and new methods.  
+
+**Predictors**. Future work may try to establish the link between country happiness and some non-numerical (qualitative) variables. We think that the following features are worth exploring:   
+- *Geography*. There seems to be a divide between north and south hemisphere, this is largely measured by wealth and income. It may be worth understanding if there is causation with happiness. Is there a divide also between West and East?  
+- *Form of government*. Democracies around the world have provided for more equality among citizens, although in the recent past some of the largest democracies in the western world have struggled to deliver results, while some more absolutist regimes such as China have recorded years of growth and prosperity to an ever larger share of the population. Does a country governance affect happiness by simply impacting on one of the key variables we studied (freedom, economy, corruption), or there is more than a confounding effect?      
+- *Religion*. Bhutan, the original sponsor of the World Happiness Report, is a poor country under many measurable economic standards, yet with a reputation of having a happy, balanced society. Bhutan is a Buddhist country. Does Buddhism do a better job than other religions in "teaching" a community how to be happy?   
+- *Culture*. An individualistic culture is a society characterized by individualism, which is the prioritization or emphasis of the individual over the entire group, as opposed to collectivism. Which cultural model does a better job in achieving happiness?    
+
+**Methodology**. Across this study, we have used discriminative models. However, generative models may outperform discriminative models on smaller datasets if their assumptions place some structure that prevents overfitting.  Generative models can learn the underlying structure of the data if the model assumptions are chosen correctly. On the contrary, discriminative algorithms are less tied to a particular structure, and in a complex world, assumptions are rarely perfectly satisfied. There is a trade-off that is worth exploring, and future development could look into deploying generative models to identify specific structures in the data that improves accuracy. This could also be supported by some more robust clustering analysis, which in this current work we have touched upon only on the surface.   
+
+Given the small size of the dataset, we do not foresee, instead, the advantage of pursuing dimension reduction techniques, such as PCA and factorization. 
+
+
+
+
+
